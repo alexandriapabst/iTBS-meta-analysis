@@ -1,0 +1,878 @@
+---
+title: "iTBS meta-analysis"
+output: 
+  html_notebook: 
+    fig_height: 22
+    fig_width: 16
+---
+
+
+Here we load the dataset from our specified directory.
+```{r}
+#setting directory
+setwd("/Users/alexandriapabst/Desktop/Projects/")
+#loading in calculated effect size data
+#needs to contain ES and SE for each study
+meta.data = read.csv("metaanalysis_effectsizes.csv")
+```
+
+
+The following are independent variables that we can use as factors explaining variability in the distribution of effect sizes. Choose whichever factors you'd like to use within the .csv file. These are the ones that we will be investigating with our analyses
+```{r}
+#creating factors for analysis
+meta.data$Construct <- factor(meta.data$Construct)
+meta.data$StudyDesign <- factor(meta.data$StudyDesign)
+meta.data$Location <- factor(meta.data$Location)
+meta.data$ShamCond <- factor(meta.data$ShamCond)
+meta.data$Publication <- factor(meta.data$Publication)
+meta.data$MeanAge <- factor(meta.data$MeanAge)
+meta.data$MT. <- factor(meta.data$MT.)
+meta.data$AMTvsRMT <- factor(meta.data$AMTvsRMT)
+meta.data$Hemisphere <- factor(meta.data$Hemisphere)
+meta.data$NavigationtoLocation <- factor(meta.data$NavigationtoLocation)
+meta.data$CurrentFlow <- factor(meta.data$CurrentFlow)
+meta.data$CoilType <- factor(meta.data$CoilType)
+meta.data$CoilDiameter <- factor(meta.data$CoilDiameter)
+meta.data$StimType <- factor(meta.data$StimType)
+
+```
+
+
+Here we have our first model-fitting for the meta-analyses. First we investigate using a fixed effects model. Fixed effects models are primarily used in clinical data, and some studies suggest that this should be included in a sensitivity analysis to determine which statistical model estimates the between-subjects variance the best. 
+```{r}
+#downloading packages
+#meta analysis with fixed-effect model
+library(meta)
+
+TE <- meta.data$Adjustments
+seTE <- meta.data$SE_effectsize
+
+m <- metagen(TE,
+             seTE,
+             data=meta.data,
+             studlab=paste(Author),
+             comb.fixed = TRUE,
+             comb.random = FALSE,
+             prediction=TRUE,
+             sm="SMD")
+print(m)
+forest(m)
+```
+
+note: In order to view the figure properly, show it in a new window, and use the 'zoom in' or 'zoom out' buttons to get this sized. 
+
+We see that this fixed effect model estimates that the mean SMD is 0.09, and 95% CI [0.02, 0.17], which is significant. This does not mean that the effect size itself is significant - an effect size smaller than 0.2 is meaningless, however these findings are likely not due to chance. The prediction interval (which estimates likelihood of effect in future studies based on the studies shown here) doesn't predict significance in future studies. We can also look at the parameter tau^2, which has a value of 0.23. The lower the tau^2 value, the better the model. The greater the I^2 parameter, the worse the estimation. We have a high value of I^2 from the model above (anything greater than 50% is considered to be significantly heterogenous), so we're going to try other statistical models to estimate the distribution of effect sizes better. 
+
+The important characteristics to look at in the output of a model to assess statistical heterogeneity across studies:
+
+1. <b>Cochran's Q:</b> this is the difference between the observed effect sizes and the fixed effect model estimate of the effect size, which is then squared, weighted, and summed. This measure increases when the number of studies and the sample size of a study increases. This measure & its significance are highly dependent on the size of the meta-analysis. 
+
+2. <b>Higgin's & Thompson's I^2:</b> the percentage of variability in effect sizes which isn't caused by sampling error. This isn't sensitive to changes in number of studies in the meta-analysis, but is sensitive to the precision (sample size of studies) of included studies. . Generally, based on Higgins et al., 2003, I^2 = 25% means low variability, I^2 = 50% means moderate heterogeneity, and I^2 = 75% means substantial heterogeneity.
+
+3. <b>Tau^2:</b> Between study variance in the meta-analysis. This measurement is insensitive to the number of studies and precision, but comes at the cost of being difficult to practically interpret.
+
+Prediction intervals can help because they take the between-study variance into account. This tells us what we can expect for future studies based on the present evidence. A broad prediction interval that extends beyond zero indicates that we cannot expect the effect found (whether it is significant or not) to be significant in every context.
+
+
+The following chunk will use a random-effects model, which is what we are probably going to use for our analysis because random-effects models are generally better at estimation when the variance is not 100% homogenous (which our dataset indicates a lot of heterogeneity (see the test of heterogeneity above)). A random-effects model is more appropriate for our data because one of the assumptions of this meta-analysis (and confirmed by the descriptive information found in each of the studies) is that there is significant methodological variation between each of the studies, which is better controlled for by a random-effects model.
+
+Note that we have set the hakn argument to "TRUE". This is recommended when using random-effects models in meta-analyses (from the metagen function documentation, supported by Hartung and Knapp, 2001a,b; IntHour et al., 2014; Langen et al., 2018) because it estimates the variance with improved coverage, especially when there is heterogeneity within the dataset.
+
+The following will be testing to determine which estimator of between study variance we will use.
+
+The options are:
+DL - DerSimonian-Laird estimator (Dersimonian and Laird, 1986)
+PM - Paule-Mandel estimator (Paule and Mandel, 1982)
+REML - Restricted maximum likelihood estimator (Viechtbauer, 2005)
+ML - Maximum likelihood estimator (Viechtbauer, 2005)
+HS - Hunter-Schmidt estimator (Hunter and Schmidt, 2015)
+SJ - Sidik-Jonkman esimator (Sidik and Jonkman, 2005)
+HE - Hedges estimator (Hedges and oLKIN, 1985)
+
+Our goal is to reduce tau^2!
+```{r}
+#comparing previous model to random-effects modeling
+#this is using hksj model - usually more conservative results w/ wider confidence intervals
+library(meta)
+library(metafor)
+
+m.hksj <- metagen(TE, seTE, data = meta.data, studlab = paste(Author),
+                  comb.fixed = FALSE, comb.random = TRUE,
+                  method.tau = "SJ", method.tau.ci = "QP",
+                  hakn = TRUE,
+                  prediction = TRUE, sm = "SMD")
+print(m.hksj)
+forest(m.hksj)
+```
+The tau^2 value is much higher compared to the fixed effect model, and heterogeneity is still high. I^2 is equivalent compared to the model above. This doesn't seem to be a good estimator. Additionally, using random effects modeling indicates that our effect is not significant (SMD = 0.16, 95% CI [-0.06, 0.39], p = 0.15). The prediction interval maintains that future studies based on this dataset would not result in significant findings.
+
+
+Now using the DL estimator method with random effects modeling. We are also classifying the calculation of confidence intervals for tau^2 using a Q-Profile method as suggested by Veroniki et al., 2016 for studies that have large I^2 values.
+```{r}
+#random effects modeling comparison
+#using DL method
+
+m.dl <- metagen(TE, seTE, data = meta.data, studlab = paste(Author),
+                  comb.fixed = FALSE, comb.random = TRUE,
+                  hakn = TRUE, method.tau.ci = "QP",
+                  method.tau = "DL",
+                  prediction = TRUE, sm = "SMD")
+print(m.dl)
+```
+This finds the effect is not significant (mean SMD = 0.15, 95% CI [-0.06, 0.36], p = 0.16). The prediction interval still does not indicate significance in future studies on the basis of this data. Tau^2 parameted is small, 0.28 (but significant), and I^2 is exactly the same as the previous study (which is normal, because I^2 is robust). This might be a better model than the previous one.
+
+The following chunk will a random effects model with ML as the estimator for tau. Using O-Profile confidence interval estimation.
+```{r}
+#random effects modeling comparison
+#using ML method
+
+m.ml <- metagen(TE, seTE, data = meta.data, studlab = paste(Author),
+                  comb.fixed = FALSE, comb.random = TRUE,
+                  hakn = TRUE, method.tau = "ML",
+                  prediction = TRUE, sm = "SMD")
+print(m.ml)
+```
+Above, we see that the effect found was not significant (mean SMD = 0.16, 95% CI [-0.07, 0.38], p = 0.15), and the prediction interval does not predict significant effects in future studies on the basis of this data (95% CI [-1.12, 1.44]). Tau^2 = 0.39.
+
+
+In the next model, we will use a DL tau estimator and Biggerstaf and Jackson confidence interval estimation, as recommended by Veroniki et al., 2016.
+```{r}
+
+m.dlbj <- metagen(TE, seTE, data = meta.data, studlab = paste(Author),
+                  comb.fixed = FALSE, comb.random = TRUE,
+                  hakn = TRUE,
+                  method.tau = "DL",
+                  method.tau.ci = "BJ",
+                  prediction = TRUE, sm = "SMD")
+print(m.dlbj)
+forest(m.dlbj)
+
+```
+Here we see still a non-significant effect produced from the model itself (SMD estimate = 0.15, 95% CI [-0.06, 0.36], p = 0.16). The prediction interval does not suggest that this significance will be maintained in future studies based off of the current dataset (95% CI [-0.84, 1.14]). Tau^2 has a low value of 0.23, but suggests that there is significant heterogeneity among studies still. 
+
+The following model will test the PM tau estimator.
+```{r}
+
+m.pm <- metagen(TE, seTE, data = meta.data, studlab = paste(Author),
+                  comb.fixed = FALSE, comb.random = TRUE,
+                  hakn = TRUE,
+                  method.tau = "PM", method.tau.ci = "QP",
+                  prediction = TRUE, sm = "SMD")
+print(m.pm)
+forest(m.pm)
+```
+This model outputs SMD estimate of 0.16, which is not significant (95% CI [-0.06, 0.38], p = 0.15). The prediction interval does not suggest that future studies on the basis of this dataset would be significant. Tau^2 is at 0.45. This is a conventional method for meta analysis, however the coverage of CIs between tau^2 and the random effects model isn't great.
+
+Now trying the REML method.
+
+```{r}
+m.reml <- metagen(TE, seTE, data = meta.data, studlab = paste(Author),
+                  comb.fixed = FALSE, comb.random = TRUE,
+                  hakn = TRUE,
+                  method.tau = "REML",
+                  prediction = TRUE, sm = "SMD")
+print(m.reml)
+```
+The REML method produces a random effects model with an SMD estimate of 0.16 which is not significant (95% CI [-0.06, 0.38], p = 0.15). The prediction interval does not suggest that future studies on the basis of this dataset would have significant effects. Tau^2 is 0.41.
+
+```{r}
+m.hs <- metagen(TE, seTE, data = meta.data, studlab = paste(Author),
+                  comb.fixed = FALSE, comb.random = TRUE,
+                  hakn = TRUE,
+                  method.tau = "HS",
+                  prediction = TRUE, sm = "SMD")
+print(m.hs)
+```
+
+```{r}
+m.he <- metagen(TE, seTE, data = meta.data, studlab = paste(Author),
+                  comb.fixed = FALSE, comb.random = TRUE,
+                  hakn = TRUE,
+                  method.tau = "HE",
+                  prediction = TRUE, sm = "SMD")
+print(m.he)
+```
+
+
+So, to summarize, here are the model estimation parameters and their respective tau^2 values:
+
+DL: tau^2 = 0.23
+PM: 0.45
+REML: 0.41
+ML: 0.39
+HS: 0.22
+SJ: 0.53
+HE: 0 - I don't trust anything that would estimate the between study variance at 0. Intuitively, we know that there has to be <i>some</i> between-study variance across studies, and that should produce some variation across the distribution of effect sizes, so we should not go with this estimator. We do see that HS has a value of 0.22, and DL has a value of 0.23 - these are very similar numbers.
+
+After going through Veroniki et al., 2016, the method that will be robust and perform without the burden of fulfilling specific assumptions is the PM estimator with QP CI estimation. 
+
+We will use the PM estimator with QP CI estimation for the large overarching meta analysis. Smaller meta analyses (for specific constructs / variables) may be adjusted for smaller sample size and less heterogeneity.
+
+We will conduct analyses to detect outliers in our data. To do this, we will be comparing CIs for each study to the CI of the pooled effect. We will also need to import the function "find.outliers", which is downloadable here: https://raw.githubusercontent.com/MathiasHarrer/dmetar/master/R/find.outliers.R, or you can use the library 'dmetar'.
+
+```{r}
+#first for m.dlbj
+#need to uncomment for each find.outliers function
+library(dmetar)
+
+m.pm$lower.random
+m.pm$upper.random
+
+
+#now for m.pm
+#m.pm$lower.random
+#m.pm$upper.random
+
+#need to load 'findoutliers' function
+#find.outliers(m.dlbj)
+find.outliers(m.pm)
+```
+
+The study identifies 7 outliers for the random effects model m.pm. When removing those 7 studies, we significantly decrease our I^2 value (34.4%), and our tau^2 value (0.04). The study does report a non-significant estimate of SMD (0.11, 95% CI [-0.01, 0.22], p = 0.07). This is exciting though, because this is marginal...which absolutely warrants further investigation as far as which covariates could possibly be producing significant effects! Again, the prediction interval does not suggest that on the basis of these findings, that future studies will find significant effects (95% CI [-0.33, 0.55]).
+
+
+To detect studies that have a significant amount of influence on the effect size, we will use the function InfluenceAnalysis, downloadable here: https://raw.githubusercontent.com/MathiasHarrer/dmetar/master/R/influence.analysis.R, or by using the 'dmetar' library.
+
+```{r}
+#Now doing influence analysis, want to determine which studies have extreme influence over effect sizes
+
+#need to have InfluenceAnalysis function run in R
+library(ggplot2)
+library(ggrepel)
+library(forcats)
+library(dplyr)
+library(grid)
+library(gridExtra)
+
+inf.analysis <- InfluenceAnalysis(x = m.pm, random = TRUE,
+                                  return.separate.plots = TRUE)
+
+
+inf.analysis[["BaujatPlot"]]
+inf.analysis[["ForestEffectSize"]]
+inf.analysis[["ForestI2"]]
+plot(inf.analysis[["InfluenceCharacteristics"]])
+```
+
+
+This suggests that we should remove the study "Debarnot et al., 2015" because it contributes a significant amount of heterogeneity to the analysis, so much so that it actually skews the results. This is the red dot in the inf.analysis plot. This also suggests (by looking at the values and the additional influence plots) that we should remove Lopez-Alonso et al., 2015 1 & 2 because of the significant amount of heterogeneity they contribute to the pooled effect sizes. 
+
+In the Baujat plots, it's especially important to pay attention to studies on the right side who are contributing much more to the overall heterogeneity, especially ones that aren't very influential concerning the overall pooled effect. 
+
+In the Forest plots which depict the leave-one out analyses, the studies at the top of the plot are the ones to pay attention to because the data are ordered by effect size (low to high). If we find studies that are contributing a large amount of heterogeneity to the meta-analysis, we should conduct a sensitivity analysis with these outliers removed from the data compared to being left in to determine if we should actually exclude those studies.
+
+Now we will continue by using a GOSH plot analysis. GOSH stands for Graphic Display of Heterogeneity - this fits the same meta analysis model to all possible subsets of our included studies - this can be super computationally intensive. We will then plot the models which will display the pooled effect size on x axis and between study heterogeneity at y-axis.
+
+If effect sizes are homogenous, then there should be a symmetric distribution with one peak.
+
+```{r}
+m.rma <- rma(yi = m.pm$TE, 
+             sei = m.pm$seTE,
+             method = m.pm$method.tau,
+             test = "knha")
+
+dat.gosh <- gosh(m.rma)
+```
+
+```{r}
+plot(dat.gosh, alpha = 0.1, col = 'blue')
+```
+
+
+The next part will use supervised machine learning algorithms to detect clusters within the data (using three clusters). We will use the function gosh.diagnostics, found here: 
+```{r}
+#run gosh.diagnostics function, needs to be pre-loaded
+library(dplyr)
+library(cluster)
+library(mvtnorm)
+library(factoextra)
+library(fpc)
+library(cowplot)
+library(reshape2)
+library(flexmix)
+library(mclust)
+library(gtable)
+library(dmetar)
+
+gosh <- gosh.diagnostics(dat.gosh)
+
+```
+```{r}
+plot(gosh$km.plot)
+```
+
+```{r}
+plot(gosh$db.plot)
+```
+
+```{r}
+plot(gosh$gmm.plot)
+```
+
+
+after this, we will remove the studies recommended by the analyses performed above. These studies are the Debarnot et al., 2015 study and the Lopez-Alonso et al., 2015 studies. 
+```{r}
+out.meta <- metagen(TE,
+              seTE,
+              data=meta.data,
+              studlab=paste(Author),
+              comb.fixed = FALSE,
+              comb.random = TRUE,
+              method.tau = "PM",
+              method.tau.ci = "QP",
+              hakn = TRUE,
+              prediction=TRUE,
+              sm="SMD",
+              exclude = c(10, 50, 51)) #x y and z should be replaced by study numbers
+forest(out.meta)
+out.meta
+```
+When performing the sensitivity analysis, we should continue from this point forward a comparison of the outlier-reduced model compared to the full model to see what differences (if any) exist between these two models and determine which has the better fit. The 'find outliers' function did designate 7 studies as outliers, however, the GOSH analysis determined that three studies in particular should be excluded, which we have done in this outlier analysis. Removing these analyses has significantly improved the heterogeneity measures by reducing them, and has simultaneously reduced the mean effect. The prediction interval is still telling us that on the basis of this data, we would not expect to find significant effects when performing a new study. 
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~SUBGROUP ANALYSES~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Now we can begin our subgroup analysis. Depending on the results above, you might have clear clusters that substantiate the need to do subgroup analyses, or maybe you have apriori reasons for conducting subgroup analyses like we do. We hypothesized that certain factors: specifically location of stimulation, sham condition, and construct (which is the cognitive category of behavior for each study) would influence the distribution of variance and the effect sizes substantially when comparing just iTBS to sham conditions.
+
+Additionally, after talking with the team, we decided that investigating the role of stimulator output relative to individual motor threshold, whether AMT or RMT was used, the current orientation, how stimulation location was determined, and coil and stimulator type should be investigated further.
+
+We are going to continue to use a random effects model at first because we cannot assume that each population from each study is homogenous. We will first pool the effect of each subgroup, and then compare the effects of subgroups. We will not compare subgroups that have k <= 10. We might start seeing some differences just through these models, however, it might be best to use mixed-effects modeling that can account for both random and fixed contributions to variance of effect sizes. 
+
+This will be investigating subgroups on the basis of the cognitive task participants conducted.
+```{r}
+construct.subgroup <- update.meta(out.meta, byvar = Construct, comb.random = TRUE, comb.fixed = FALSE)
+forest(construct.subgroup)
+construct.subgroup
+```
+From this analysis, the only viable group that we can investigate further is Motor Skill studies (k = 15). The other subgroups of behavior are k <= 10. What is that the type of study conducted, or the construct, does not significantly influence effect size. In some ways this is not surprising, because we did not find an overall effect of iTBS vs sham stimulation type. Motor skill's SMD estimate = 0.25 (95% CI [-0.05, 0.56]). Motor skill has a substantial amount of heterogeneity between studies (I^2 = 69.6%). The other subgroups, Attention, Emotion, Memory, and Social Cognition have a k <= 5, which makes it difficult to perform any further quantitative analysis. 
+
+<b>It is important to note that testing for between subgroup differences, these differences are not statistically significant (Q = 11.43, p = 0.18).</b>
+
+
+The next subgroup we will be investigating is the control condition used across studies. 
+
+```{r}
+control.subgroup <- update.meta(out.meta, byvar = ShamCond, comb.random = TRUE, comb.fixed = FALSE)
+forest(control.subgroup)
+control.subgroup
+```
+Getting closer! We have found that the Control condition has a significant effect on the distribution of the variance (Q = 49.5, p < 0.0001). However, we should be cautious in interpreting this, because the control condition of "Rotation of the Coil" has substantially more studies than any other control condition, which may be difficult to break this down further in subsequent quantitative analyses, as none of the other studies have a threshold of k >= 10.
+
+
+
+Next, we will look at coil location.
+```{r}
+locationsubgroup <- update.meta(out.meta, byvar = Location, comb.random = TRUE, comb.fixed = FALSE)
+forest(locationsubgroup)
+locationsubgroup
+```
+The subgroup of location suggests that the intervention effect (iTBS vs sham) differs by stimulation location. That's exciting! However, it's difficult to determine exactly which location influences this, because they all have a k <=10, and some are the only study contributing to that particular location. However, finding that stimulation location contributes significantly to the between-study variance is an important finding! (Q = 30.94, p = 0.03)
+
+
+Let's try a subgroup analysis of measurement type. 
+
+```{r}
+measure.subgroup <- update.meta(out.meta, byvar = Group_1, comb.random = TRUE, comb.fixed = FALSE)
+measure.subgroup
+forest(measure.subgroup)
+```
+Okay, this is actually really exciting. The type of measurement that was used does significantly contribute to the heterogeneity of effect sizes (Q = 34.01, p < 0.0001), and the reaction time subgroup does have a significant effect (SMD = 0.37, 95% CI [0.13, 0.61]). Being cautious here though because there is no measure of tau / between study heterogeneity, and I'm not sure that's accurate. 
+
+Now we will look at % of stimulator output.
+```{r}
+MT.subgroup <- update.meta(out.meta, byvar = MT., comb.random = TRUE, comb.fixed = FALSE)
+MT.subgroup
+forest(MT.subgroup)
+```
+As expected, studies within the 80% of MT contribute the most to the effect sizes, however that simply could be the sheer number of studies contributing to this particular subgroup. We cannot quantitatively compare 80% MT to other groups because the other groups have a k < 10. The % of MT used for stimulator output does contribute significantly to heterogeneity between groups (Q = 31.02, p < 0.0001).
+
+Now we will look at AMT vs RMT.
+```{r}
+avsr.subgroup <- update.meta(out.meta, byvar = AMTvsRMT, comb.random = TRUE, comb.fixed = FALSE)
+avsr.subgroup
+forest(avsr.subgroup)
+```
+No significant differences between subgroups - although we can qualitatively see that studies that utilize AMT vs RMT for cognitive enhancement generally have a bit more positive of an effect.
+
+Now we will look at differences of stimulator type.
+
+```{r}
+stimtype.subgroup <- update.meta(m.dlbj, byvar = meta.data$StimType, comb.random = TRUE, comb.fixed = FALSE)
+forest(stimtype.subgroup)
+summary(stimtype.subgroup)
+```
+Because each subgroup has a k < 10, we can't really compare these quantitatively.It seems like there may be something here, however, as Q = 26.31 and the p value = 0.03, which necessitates further investigation. This would be interesting to look at in a large mixed-effects model where we can control for coil type among other things. 
+
+Now we will look at the influence of coil diameter. 
+
+```{r}
+coildiam.subgroup <- update.meta(m.dlbj, byvar = meta.data$CoilDiameter, comb.random = TRUE, comb.fixed = FALSE)
+forest(coildiam.subgroup)
+summary(coildiam.subgroup)
+```
+
+This is saying that coil diameter does have a significant impact on effect sizes between iTBS and sham. However, almost every study uses the 70mm diameter, and the other studies have a k < 10, which means it will be really difficult to investigate this further. 
+
+Now, lets look at the impact of localization of the site of stimulation (how precise the measurement was made).
+
+```{r}
+nav.subgroup <- update.meta(m.dlbj, byvar = meta.data$NavigationtoLocation, comb.random = TRUE, comb.fixed = FALSE)
+forest(nav.subgroup)
+summary(nav.subgroup)
+```
+This is interesting - it notes that navigation to the location does have an impact on effect size and this can be further investigated with the 10-20 system navigation, cortical excitability mapping for motor areas, and individualized MRI. We won't be able to investigate how measured distance navigation or methods of neuronavigation have an impact on effect size because k < 10 for each of those categories. 
+
+Now let us take a look at current flow.
+
+```{r}
+flow.subgroup <- update.meta(m.dlbj, byvar = meta.data$CurrentFlow, comb.random = TRUE, comb.fixed = FALSE)
+forest(flow.subgroup)
+summary(flow.subgroup)
+```
+This is actually really interesting. This shows that current flow does have a significant impact on effect size, and we can measure these differences quantitatively, however, it is worth noting that many studies did not include the coil orientation or current flow direction within their methods, and makes this difficult to draw any certain conclusions. 
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~Subgroup analyses - Mixed Effects Model~~~~~~~~~~~~~~~~~~~~~~~~
+Now we will be using mixed-effects models to model the subgroup influences on effect size. This is different than the previous models which only use random effects, because we are accounting for differences between subgroups using a fixed-effects component of the model, and differences within subgroups are accounted for using random-effects.
+```{r}
+subgroup.analysis.mixed.effects(x = m.dlbj, 
+                                  subgroups = meta.data$Construct)
+```
+The results from the mixed effects analysis above are completely same for the subgroup of Construct. I'm going to continue to perform the analysis on the subsequent subgroups to confirm if they are the same - in which case the fixed-effects additions aren't adding anything important to the model.
+
+
+```{r}
+subgroup.analysis.mixed.effects(x = m.dlbj, subgroups = meta.data$ShamCond)
+```
+This is also exactly the same. I will try one more mixed effects model just to be sure. 
+
+Now I will try a mixed effects model with Location as a subgroup.
+
+```{r}
+subgroup.analysis.mixed.effects(x = m.dlbj, subgroups = meta.data$Location)
+```
+Results are exactly the same as the model with only random effects model. 
+
+
+
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Meta Regression~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A meta regression analysis is incredibly similar to subgroup analyses - the only difference is that meta regression allows for the use of continuous data as predictors of our variable (effect size) alongside categorical predictors. Almost all of our interests lie with categorical predictors - like 'Contstruct' or 'Location'. However, after discussion with my team, two variables that we can investigate using meta regression are Stimulator output (% of motor threshold) and Mean age of the sampled participants. 
+
+Meta regressions also allow us to assess the fit of a regression model, where we can calculate an overall R^2 value. Additionally, we can also determine the statistical signifance of predictors, seeing if a variable will predict effect size differences in the model. We want to explain as much of the variance as possible across effect sizes. So, there are some advantages to using a meta-regression instead of a mixed effects model or random effects model.
+
+First, we will look at how well a meta-regression fits for one of our variables -> $ShamCond.
+
+```{r}
+metareg(m.dlbj, ShamCond)
+```
+The R^2 for this model is 4.22%...this is not doing a good job at explaining the variance across effect sizes. We will do this for each individual variable, because I think it's important to see how much each variable explains.
+
+Next, we will do a metaregression for $Construct.
+
+```{r}
+metareg(m.dlbj, Construct)
+```
+This model does not explain any variance across effect sizes. That's actually really interesting. Let's think about why this might happen...It could be that 'construct' itself is way too broad, and the model can't capture any consistencies in that variation, so it's 100% unexplained noise. It could also be that we don't have enough studies within each construct for the model to accurately determine how much each category within Construct contributes to the variation. It could be a combination of those things, among others.
+
+
+Next, we will perform a metaregression on $Location, which, if we're remembering from the previous random effects model subgroup analysis, that Location was found to be a significant predictor of effect size. Let's see how good that model actually is at capturing the variance.
+
+```{r}
+output.metareg <- metareg(m.dlbj, Location)
+bubble(output.metareg,
+       xlab = "Location",
+       col.line = "blue",
+       studlab = TRUE)
+output.metareg
+```
+Okay, this is where things really get interesting. We knew that Location was found to be a significant predictor using random effects modeling. When performing a meta regression, we found that Location explains 57.11% of the variance across effect sizes! That's a significant portion, and something that is really important to communicate and discuss in the conclusions.
+
+Now, we will investigate study design.
+
+```{r}
+metareg(m.dlbj, StudyDesign)
+```
+This model doesn't actually seem to account much for explaining the variation in effect sizes (contrary to previous findings in the random effects modeling), as it's R^2 value is 6.56%.
+
+Next, we will investigate the influence of Coil Diameter on effect sizes. 
+
+```{r}
+coildiam.metareg <- metareg(m.dlbj, CoilDiameter)
+print(coildiam.metareg)
+bubble(coildiam.metareg, xlab = "Coil Diameter",
+       col.line = "blue", lwd = 2,
+       studlab  = TRUE)
+```
+One of the continuous variables that we can investigate and use as a predictor in a meta-regression is the diameter of the coil. This model does not explain any of the variance in effect sizes.
+
+Next, we will investigate the percentage of stimulator output and its relation to effect sizes.
+
+```{r}
+mt.metareg <- metareg(m.dlbj, MT.)
+bubble(mt.metareg, xlab = "Percentage of MT - Stimulator Output",
+       col.line = "blue", lwd = 2,
+       studlab  = TRUE)
+print(mt.metareg)
+```
+We find that percentage of stimulator output relative to an individual subject's motor threshold does not add any additional variance to the distribution of effect sizes.
+
+
+
+Next, we will investigate the influence of Mean Age on effect sizes.
+```{r}
+age.metareg <- metareg(m.dlbj, MeanAge)
+bubble(age.metareg, xlab = "Mean Age of Sample",
+       col.line = "blue", lwd = 2,
+       studlab  = TRUE)
+print(age.metareg)
+```
+This is interesting - the model here says that the R^2 value is 58.25%, and that mean age of the participants in the studies do have an influence on effect sizes. This needs to be investigated much more thoroughly, as I need to make sure that the model is treating mean age as a continuous predictor and not a categorical predictor.
+
+In the output here, we see that the youngest age (which is 20.1) is the intercept.This warrants a graph that displays the entire model (*do this)
+However, when looking at how the significant estimates compare to the intercept, it is clear that this is due to the small number of studies representing each category.
+
+Next, I will look at using AMT versus RMT to stimulate and its influence on effect sizes.
+```{r}
+metareg(m.dlbj, AMTvsRMT)
+```
+The output determines that AMTvsRMT variable does not explain any of the variance across the distribution of effect sizes.
+
+Next, I will investigate the influence of stimulator type on effect sizes.
+```{r}
+metareg(m.dlbj, StimType)
+
+```
+This model determines that stimulator type does not have any influence on the distribution of effect sizes.
+
+Next, I will look at the role of current flow in effect sizes (AP versus PA).
+
+```{r}
+output.metareg <- metareg(m.dlbj, CurrentFlow)
+bubble(output.metareg,
+       xlab = "Current Flow",
+       col.line = "blue",
+       studlab = TRUE)
+output.metareg
+```
+This model determiens that Current Flow determines approximately 6.49% of the variance in effect sizes. 
+
+So we've now determined that some predictors do a better job explaining the variance in the effect sizes better than others. Now, we can use multiple meta regression to use multiple predictors in the same equation - so we can determine the effect of AMTvsRMT while also accounting for MT% and Location!
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~MULTIPLE META REGRESSION~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Not only can we control for multiple predictors, but we can also investigate interactions between predictors on effects size!
+
+There are, however, certain things that we need to watch out for when building these powerful models. 
+
+  1. The first is <b> overfitting</b>. This happens when the model we build fits the data too closely, and we can't extrapolate this model to other similar datasets or future studies. This would indicate a false positive.
+
+  One of the tactics that statisticians and modelers suggest is to minimize the number of investigated predictors so that we don't find a statistical relationship spuriously. AIC and BIC values will help with this. 
+
+  We should also make sure that we are selecting our predictors with intention - not frivilously. 
+
+  When computing the significance of predictors, we should make sure to use the Knapp-Hartung adjustment to make sure that we are obtaining the most reliable estimates.
+
+  We can also use permutation based modeling practices to assess robustness of the model through resampling.
+
+  2. Next, we need to watch out for multicolliniearity - which means that one or more predictor in the model can be linearly predicted from another predictor within the model with relatively high accuracy (highly correlated predictors). This will limit the R^2 value of the odel, and will also report false positives. We can deal with multicollinearity by removing redundant predictors or combining multiple predictors into one.
+  
+
+So how do we choose predictors? 
+  1. Forced entry methods: all predictors in at the same time.
+  2. Hierarchical methods: including predictors stepwise (first with previously associated predictors based on scientific methods and previous research, then novel predictors if all the heterogeneity has not been yet captured).
+  3. Stepwise: One predictor after another based on statistical criterion, beginning with the variable that explains the largest amount of variability to the smallest. Can also do backward selection, where all predictors are added to the model and then removed based on statistical criterion.
+  4. Multimodel inference methods: produce all possible combinations of the selected rpedictors, and evaluate the models using AIC values.
+
+Personally, I like multimodel inference methods the best, as you can construct every conceivable model and pick the best model based on statistical criterion, and leave this up to the data rather than a choice which could be biased. 
+
+Now we will build our multilevel regression model.
+
+```{r}
+#need to store TE and seTE as yi and sei, because this is the standard notation that metafor uses, which will be used to 
+#calculate the regression model
+
+yi <- meta.data$Adjustments
+sei <- meta.data$SE_effectsize
+
+#first check for multicollinearity
+#this would be done for continuous variables, and the only variable that we are interested in that is numerical is mean age
+
+#if we did want to investigate multicollinearity
+
+# cor(meta.data,[,COLUMNS OF DATA])
+# library(PerformanceAnalytics)
+# chart.Correlation(meta.data[,COLUMNS OF DATA])
+
+
+```
+
+```{r}
+model1 <- rma(yi = yi, sei = sei,
+              data = meta.data,
+              method = "REML", #this is maximum likelihood, can also use REML
+              mods = ~ Location,
+              test = "knha") 
+model1
+```
+
+Let's do a little permutation test to verify these results...
+
+```{r}
+anova(model1, model2)
+```
+
+Let's try using multimodel inference to determine which predictors and their combinations create the best performing model. We will need to use the function "multimodel.inference", which is downloadable here: https://raw.githubusercontent.com/MathiasHarrer/dmetar/master/R/mreg.multimodel.inference.R
+
+```{r}
+
+library(dmetar)
+
+multimodel.inference(TE = "Adjustments",
+                     seTE = "SE_effectsize",
+                     data = meta.data,
+                     predictors = c("Construct","ShamCond","Location"),
+                     interaction = FALSE)
+```
+It looks like it may be impossible to use multimodel inference for our data - this could be because we may have inconsistencies in our data? Regardless, doing permutation tests should be sufficient. 
+
+Let's do some permutation tests! The following models we will build and run permutation tests on (these are based on our apriori assumptions and are not exploratory - that will be reserved for later analyses).
+
+
+```{r}
+model2 <- rma(yi = yi, sei = sei,
+              data = meta.data,
+              method = "REML", #this is maximum likelihood, can also use REML
+              mods = ~ Location * Construct,
+              test = "knha") 
+model2
+#permutest(model2)
+```
+
+Lets compare the two models we just permuted. 
+
+```{r}
+anova(model1, model2)
+```
+Here, we see that the interaction model with Location and Navigation to Location variables does not actually perform better than just the modeel without Navigation to Location. We're going to try building more models, then we will compare those models, and then perform permutation tests to test the robustness of our best models. 
+
+First, we will build models for Location,Current Flow, Construct, and Sham Condition.
+
+```{r}
+model1 <- rma(yi = yi, sei = sei,
+              data = meta.data,
+              method = "REML", #this is maximum likelihood, can also use REML
+              mods = ~ Location,
+              test = "knha") 
+model1
+#permutest(model1)
+```
+
+
+```{r}
+model2 <- rma(yi = yi, sei = sei,
+              data = meta.data,
+              method = "REML", #this is maximum likelihood, can also use REML
+              mods = ~ CurrentFlow,
+              test = "knha") 
+summary(model2)
+permutest(model2)
+```
+
+
+```{r}
+model3 <- rma(yi = yi, sei = sei,
+              data = meta.data,
+              method = "REML", #this is maximum likelihood, can also use REML
+              mods = ~ Construct,
+              test = "knha") 
+#model3
+permutest(model3)
+```
+
+
+```{r}
+model4 <- rma(yi = yi, sei = sei,
+              data = meta.data,
+              method = "REML", #this is maximum likelihood, can also use REML
+              mods = ~ ShamCond,
+              test = "knha") 
+#model4
+permutest(model4)
+```
+
+
+```{r}
+model5 <- rma(yi = yi, sei = sei,
+              data = meta.data,
+              method = "REML", #this is maximum likelihood, can also use REML
+              mods = ~ Location + ShamCond + Construct,
+              test = "knha") 
+model5
+#permutest(model5)
+```
+
+
+```{r}
+model6 <- rma(yi = yi, sei = sei,
+              data = meta.data,
+              method = "REML", #this is maximum likelihood, can also use REML
+              mods = ~ Location * ShamCond * Construct,
+              test = "knha") 
+model6
+#permutest(model6)
+
+```
+
+```{r}
+model7 <- rma(yi = yi, sei = sei,
+              data = meta.data,
+              method = "REML", #this is maximum likelihood, can also use REML
+              mods = ~ Location * CurrentFlow,
+              test = "knha") 
+model7
+#permutest(model7)
+```
+
+
+
+Comparing models. We will compare model 1 and model 5, since these are the models that seem to account for the most variance.
+```{r}
+anova(model1, model5)
+```
+This is telling us we should use the reduced model. 
+
+```{r}
+anova(model1, model7)
+```
+Again, this is telling us that we should use the reduced model. The AICc value for the full model is WAY maximized, which means that it's not the best way to account for the variation in the data.
+
+```{r}
+permutest(model1)
+```
+Since Model 1 is our best performing model (only having Location included as a variable), we only ran a permutation test on this model to test the robustness. Location is still a significant moderator - the p value did decrease during the permutation test (p = 0.004 as opposed to p = 0.0005 in the original model).
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Publication Bias~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Now we will begin the assessment of publication bias. This is something that the field has definitely struggled with - largely in psychology research the assumption that studies are only published if there are significant effects are a large issue, and emphasis is often placed on the p-value instead of the overall effect of intervention.
+
+The first method we will be using to assess publication bias are through small sample bias methods. The assumptions for doing this are the following:
+
+  1. Large studies are likely to get published, regardless of significance.
+  2. Moderately sized studies are at greater risk of not being published, but only some studies will be missing because mdoerately sized effects are more likely to become significant.
+  3. Small studies have the greatest risk for not being published because of non-significance, and will have the largest portion missing. 
+  
+Small sample bias methods will be able to determine if small studies with small effect sizes are missing because of the file drawer problem.
+
+```{r}
+funnel(m.dlbj, xlab = "Hedges' g")
+```
+In the funnel plot above, we are shown a graph with a y-axis of the standard error of each studies, with larger studies (which would have an inherently smaller SE) plotted on top of the y-axis, and the x-axis shows the effect size of each study. 
+
+If there was no publication bias, all studies would be symmetrical around the pooled effect size (striped vertical line) within the funnel. 
+
+If publication bias is present, the funnel will be assymetrical, because only the small studies with large effect sizes are published, and small studies without a large significant effect are missing.
+
+What we see in the plot above is that there is somewhat of a likelihood of publication bias toward larger studies, as the majority of studies are at the top with very little standard error. 
+
+```{r}
+funnel(m.dlbj, xlab = "Hedges' g", studlab = TRUE)
+```
+
+```{r}
+funnel(m.dlbj, xlab = "Hedges' g",
+       contour = c(.95, .975, .99),
+       col.contour = c("darkblue","blue","lightblue")) + 
+  legend(1.4, 0, c("p < 0.05", "p < 0.025", "p < 0.01"), bty = "n",
+         fill = c("darkblue","blue","lightblue"))
+```
+
+In the funnel plot above, we can see that many studies actually report non significance, but especially smaller studies. Studies with larger groups are the ones that end up reporting more significance, but this seems to be pretty well rounded for all studies, with what looks to be studies reporting non-significance at a higher rate than those that are significant.
+
+However, this is something that we can quantitatively investigate using Egger's test of the intercept, which can quantify funnel plot assymetry.
+
+```{r}
+library(dmetar)
+
+eggers.test(x = m.dlbj)
+```
+Egger's test does not indicate funnel plot asymmetry!
+
+Let's further investigate this, though. We can use a technique called Duval and Tweedies trim and fill procedure. This is traditionally used when Egger's test is significant, and this procedure estimates what the actual effect size would have been if missing small studies were published.
+
+```{r}
+trimfill(m.dlbj)
+```
+Because we don't have any issues with asymmetry in the studies reported, there is no difference between the SME estimate here and in the original model. The trim and fill procedure did not need to add any additional studies.
+
+There are alternative ways to test for publication bias - and one that is becoming more popular is the p-curve method of analysis. This method assumes that publication bias isn't generated because researchers don't publish non-significant results, but rather because of p-hacking and exploratory forms of data analysis until a finding becomes significant. 
+  
+```{r}
+pcurve(m.dlbj)
+```
+ What we find from this analysis is that the evidential value is present - meaning that there is a "true" effect size behind our findings, and that these results aren't the product of publication bias and p-hacking - which is REALLY good!
+  
+
+We can also use information from the p-curve analysis to estimate the true effect despite publication or bias in the p-values.
+
+```{r}
+pcurve(m.dlbj, effect.estimation = TRUE, N = meta.data$N, dmin = 0, dmax = 1)
+```
+The estimated effect for this is MUCH higher than what our model originally output - and we can see at in the output of the analysis that we should not trust the effect size estimate produced from this method because the I^2 value is >= 50%. One way we can possibly get around this is when we perform the sensitivity analysis, and compare the output to a model in which the heterogeneity is significantly reduced when we remove outliers and influential studies.
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~RISK OF BIAS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Now we will be investigating how much bias we have when performing these analysis and assessing our internal validity.
+
+```{r}
+library(robvis)
+```
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~NETWORK META ANALYSIS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Now we will perform a network meta analysis. This allows us to calculate an effect size comparison even if two conditions were never directly compared. This will help especially with our location covariate - however I am slightly worried that because the methodology across studies is not consistent, the model won't be able to properly deliver results.
+
+```{r}
+library(netmeta)
+meta.data$StudyID <- factor(meta.data$StudyID)
+summary(meta.data$StudyID)
+
+#this allows us to see multi-arm studies
+```
+
+```{r}
+m.netmeta <- netmeta(TE = meta.data$Adjustments,
+                     seTE = meta.data$SE_effectsize,
+                     treat1 = Location,
+                     treat2 = treat2,
+                     studlab = meta.data$StudyID,
+                     data = meta.data,
+                     sm = "SMD",
+                     comb.fixed = TRUE,
+                     comb.random = TRUE,
+                     reference.group = "control",
+                     details.chkmultiarm = TRUE,
+                     sep.trts = " vs ")
+m.netmeta
+```
+
+
+```{r}
+decomp.design(m.netmeta)
+```
+
+```{r}
+netgraph(m.netmeta)
+```
+
+```{r}
+netheat(m.netmeta)
+```
+
+
+
